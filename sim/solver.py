@@ -317,9 +317,11 @@ class SinglePhaseTransientSolver:
                     dTdx = (T[n, i+1] - T[n, i]) / self.dx
                 
                 # Temperature update (explicit Euler)
-                T[n+1, i] = (T[n, i] 
-                             + self.dt * (-Vi * dTdx 
-                                          + (q_friction - q_loss) / (rho_i * cp)))
+                T_new = (T[n, i] 
+                         + self.dt * (-Vi * dTdx 
+                                      + (q_friction - q_loss) / (rho_i * cp)))
+                # Clip temperature to physically valid range
+                T[n+1, i] = max(-50.0, min(500.0, T_new))
             
             # Downstream temperature (zero-gradient or extrapolation)
             if V[n+1, self.Nx] >= 0:

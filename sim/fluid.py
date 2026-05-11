@@ -29,8 +29,12 @@ class Liquid:
         return self.rho_ref * (1.0 + dP / self.bulk_modulus - self.thermal_expansion * dT)
     
     def viscosity(self, T: np.ndarray) -> np.ndarray:
-        """Temperature-dependent viscosity"""
-        return self.viscosity_ref * np.exp(-self.visc_T_coeff * (T - self.T_ref))
+        """Temperature-dependent viscosity (clipped to prevent overflow)"""
+        # Clip temperature to prevent exp overflow
+        T_clipped = np.clip(T, -50.0, 200.0)
+        result = self.viscosity_ref * np.exp(-self.visc_T_coeff * (T_clipped - self.T_ref))
+        # Clip viscosity to physically valid range
+        return np.clip(result, 1e-6, 100.0)
     
     def head_to_pressure(self, H: np.ndarray, rho: np.ndarray) -> np.ndarray:
         """Convert head (m) to pressure (Pa)"""
