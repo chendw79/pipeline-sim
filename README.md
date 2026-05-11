@@ -1,74 +1,66 @@
-# PipelineSim — 液体管道瞬态模拟
+# 🌊 PipelineSim
 
-单相液体管道瞬态仿真工具，基于**特征线法 (Method of Characteristics, MOC)**，用于模拟水击/压力波动等瞬态过程。
+**Single-phase liquid pipeline transient simulator — MOC hydraulics + Finite Difference temperature coupling**
 
-## 与商业软件对标
+[![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://www.python.org/)
+[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+[![GitHub](https://img.shields.io/badge/GitHub-chendw79%2Fpipeline--sim-brightgreen)](https://github.com/chendw79/pipeline-sim)
 
-| 软件 | 定位 | 本项目的对标目标 |
-|------|------|-----------------|
-| SPS (Stoner) | 液体管道动态仿真 | ✅ 单相瞬态求解器 |
-| OLGA | 多相流动态仿真 | 🚧 远期目标 |
-| LedaFlow | 多相流瞬态仿真 | 🚧 远期目标 |
+---
 
-## 物理模型
+## Quick Start
 
-### 控制方程（一维瞬态流动）
+```python
+from sim.fluid import Liquid
+from sim.pipe import Pipe
+from sim.steady import SteadyStateCalculator
+from sim.solver import SinglePhaseTransientSolver, flow_inlet, pressure_outlet
 
-连续方程：
-```
-∂H/∂t + (a²/g) · ∂V/∂x = 0
-```
+# Define pipe and fluid
+pipe = Pipe(length=15000.0, diameter=0.6, wall_thickness=0.014)
+liquid = Liquid(name="Crude Oil")
 
-动量方程：
-```
-∂H/∂x + (1/g) · ∂V/∂t + f·V·|V|/(2gD) = 0
-```
+# Steady-state initialization (CRITICAL for realistic results)
+calc = SteadyStateCalculator(pipe, liquid)
+V0, P_init, T_init = calc.initialize_transient(Q=0.25, T_inlet=45.0, P_outlet=0.5e6)
 
-其中：
-- H = 压力水头 (m)
-- V = 流速 (m/s)
-- a = 水击波速 (m/s)
-- f = Darcy-Weisbach 摩阻系数
-- D = 管道内径 (m)
-- g = 重力加速度 (9.81 m/s²)
+# Transient simulation
+solver = SinglePhaseTransientSolver(pipe, liquid, Nx=40)
+result = solver.solve(
+    t_max=80.0,
+    inlet_bc=flow_inlet(lambda t: 0.25, lambda t: 45.0),
+    outlet_bc=pressure_outlet(lambda t: 0.5e6),
+    mode='A',
+    V_initial=V0, P_initial=P_init, T_initial=T_init,
+)
 
-### 特征线法 (MOC)
-
-PDE 沿特征线方向转化为常微分方程：
-
-C⁺: dH/dt + (a/g)·dV/dt + (a·f·V·|V|)/(2gD) = 0, 沿 dx/dt = a
-
-C⁻: dH/dt - (a/g)·dV/dt - (a·f·V·|V|)/(2gD) = 0, 沿 dx/dt = -a
-
-## 项目结构
-
-```
-pipeline-sim/
-├── sim/
-│   ├── __init__.py
-│   ├── physics.py      # 物理参数（波速、摩阻）
-│   ├── solver.py       # MOC 求解器
-│   ├── boundary.py     # 边界条件（储罐、阀门、泵）
-│   └── network.py      # 管道网络拓扑
-├── examples/
-│   ├── simple_pipe.py  # 简单单管示例
-│   └── valve_closure.py# 阀门关闭水击
-├── tests/
-│   └── test_moc.py
-├── output/             # 模拟结果
-├── setup.py
-└── README.md
+# Export
+from sim.export import export_to_csv, generate_report
+export_to_csv(result, 'results.csv', pipe)
+print(generate_report(result, pipe, liquid, solver, "My Case"))
 ```
 
-## 快速开始
+## Features
 
-```bash
-cd examples
-python valve_closure.py
-```
+| Feature | Status |
+|---------|--------|
+| Method of Characteristics (MOC) hydraulics | ✅ |
+| Upwind finite difference temperature | ✅ |
+| Mode A: Inlet Q+T / Outlet P | ✅ |
+| Mode B: Inlet P+T / Outlet Q | ✅ |
+| Pressure/temperature dependent fluid properties | ✅ |
+| Steady-state initialization (analytical) | ✅ |
+| CSV / JSON export | ✅ |
+| Self-diagnostic reports | ✅ |
+| Elevation profiles | ✅ |
+| Multi-pipe networks | 📋 Planned |
+| Pump/valve component models | 📋 Planned |
+| HDF5 export | 📋 Planned |
 
-## 依赖
+## Validation
 
-- Python 3.8+
-- NumPy
-- Matplotlib (可视化)
+**Water hammer (instant valve closure):** Peak error < 1% against Joukowsky theory.
+
+## License
+
+MIT
