@@ -196,8 +196,7 @@ class SeriesNetwork:
         unified_results = []
         for r in results:
             if r.Nt != max_Nt:
-                # Interpolate
-                from scipy.interpolate import interp1d
+                # Interpolate using numpy (no scipy dependency)
                 P_new = np.zeros((max_Nt, r.x.shape[0]))
                 T_new = np.zeros((max_Nt, r.x.shape[0]))
                 V_new = np.zeros((max_Nt, r.x.shape[0]))
