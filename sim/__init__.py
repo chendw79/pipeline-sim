@@ -11,7 +11,7 @@ from .pipe import Pipe
 from .steady import SteadyStateCalculator
 from .solver import SinglePhaseTransientSolver, flow_inlet, pressure_inlet, pressure_outlet, flow_outlet
 from .pump import Pump
-from .export import export_to_csv, export_to_json, generate_report
+from .export import export_to_csv, generate_report
 
 __all__ = [
     "Liquid", "Pipe", "SteadyStateCalculator",

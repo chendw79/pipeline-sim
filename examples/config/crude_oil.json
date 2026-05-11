@@ -1,0 +1,38 @@
+{
+  "name": "15km Crude Oil Pipeline",
+  "mode": "A",
+  "Nx": 40,
+  "t_max": 80.0,
+  "pipe": {
+    "name": "Main_Line",
+    "length": 15000.0,
+    "diameter": 0.6,
+    "wall_thickness": 0.014,
+    "roughness": 4.5e-5,
+    "young_modulus": 2.07e11,
+    "U": 5.0,
+    "T_ground": 15.0
+  },
+  "fluid": {
+    "name": "Crude Oil",
+    "rho_ref": 860.0,
+    "bulk_modulus": 1.8e9,
+    "cp": 2000.0,
+    "viscosity_ref": 0.05,
+    "viscosity_temp_coeff": 0.02
+  },
+  "boundary": {
+    "Q_steady": 0.25,
+    "T_steady": 45.0,
+    "P_steady": 0.5e6,
+    "Q_func_num": 0.25,
+    "T_func_num": 45.0,
+    "P_func_num": 0.5e6
+  },
+  "elevation_profile": [
+    {"x": 0, "z": 50.0},
+    {"x": 5000, "z": 80.0},
+    {"x": 10000, "z": 40.0},
+    {"x": 15000, "z": 60.0}
+  ]
+}
