@@ -1,0 +1,26 @@
+{
+  "pipe": {
+    "length_m": 5000.0,
+    "diameter_m": 0.4,
+    "elevation_change_m": 20.0
+  },
+  "fluid": {
+    "name": "Crude Oil",
+    "density": 850.0
+  },
+  "wave_speed_mps": 1260.800368918769,
+  "tests": {
+    "mode_A": {
+      "description": "Inlet Q+T / Outlet P",
+      "peak_pressure_mpa": 1.51,
+      "final_inlet_pressure_mpa": 1.004,
+      "temp_drop_c": 5.02
+    },
+    "mode_B": {
+      "description": "Inlet P+T / Outlet Q",
+      "peak_pressure_mpa": 1.978,
+      "final_outlet_pressure_mpa": 1.753,
+      "temp_drop_c": 7.02
+    }
+  }
+}

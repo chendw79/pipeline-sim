@@ -1,0 +1,14 @@
+{
+  "description": "Valve closure water hammer",
+  "pipe": {
+    "length": 2000.0,
+    "diameter": 0.3
+  },
+  "fluid": {
+    "density": 998.0
+  },
+  "wave_speed": 1272.1950481385459,
+  "peak_head": 293.0977530089523,
+  "joukowsky_delta": 194.5252367184321,
+  "peak_pressure_mpa": 2.8695383791037865
+}

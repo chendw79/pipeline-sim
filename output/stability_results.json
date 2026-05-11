@@ -1,0 +1,7 @@
+{
+  "instant_closure_error_pct": 0.96,
+  "instant_closure_peak_MPa": 2.213,
+  "joukowsky_peak_MPa": 2.234,
+  "gradual_peak_MPa": 2.178,
+  "opening_error_pct": 6.21
+}
