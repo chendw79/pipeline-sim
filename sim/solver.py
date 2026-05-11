@@ -355,6 +355,24 @@ class SinglePhaseTransientSolver:
 # Boundary condition factories
 # ============================================================
 
+def pump_inlet(P_base_func: Callable[[float], float], pump, T_func: Callable[[float], float]):
+    """Inlet with pump discharge pressure.
+    
+    P(t) = P_base(t) + ρ·g·H_pump(Q_rated, N(t))
+    
+    Pump couplings (variable-flow coupling) require iteration.
+    This simplified version uses the pump head at rated conditions
+    added to the base pressure.
+    """
+    def bc(t: float):
+        P_base = P_base_func(t)
+        rho = pump.fluid_density if hasattr(pump, 'fluid_density') else 860.0
+        H_pump = pump.head(pump.Q_rated, pump.N_rated * 1.0)
+        P_out = P_base + rho * 9.81 * H_pump
+        return P_out, T_func(t)
+    return bc
+
+
 def flow_inlet(Q_func: Callable[[float], float], T_func: Callable[[float], float]):
     """Inlet boundary: flow rate + temperature (Mode A)"""
     def bc(t: float):
