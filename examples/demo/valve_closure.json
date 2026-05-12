@@ -1,0 +1,48 @@
+{
+  "name": "Valve Closure (Water Hammer)",
+  "description": "Rapid valve closure at pipe inlet causing water hammer. 10km pipe, 0.5m diameter, initial flow 0.2 m³/s. Valve closes over 2 seconds.",
+  "pipe": {
+    "length": 10000,
+    "diameter": 0.5,
+    "roughness": 0.012,
+    "elevation_start": 0,
+    "elevation_end": 0,
+    "heat_transfer_coeff": 1.0,
+    "T_ground": 15.0
+  },
+  "liquid": {
+    "type": "water",
+    "rho_ref": 1000,
+    "K_ref": 2.2e9,
+    "cp": 4180,
+    "viscosity_ref": 1.0e-3,
+    "P_ref": 1.0e5
+  },
+  "solver": {
+    "method": "MOC",
+    "Nx": 30,
+    "t_max": 30.0
+  },
+  "boundary": {
+    "mode": "A",
+    "inlet": {
+      "type": "flow_inlet",
+      "Q0": 0.2,
+      "T0": 20.0,
+      "transient": {
+        "type": "ramp",
+        "t_start": 2.0,
+        "duration": 2.0,
+        "value_final": 0.0
+      }
+    },
+    "outlet": {
+      "type": "pressure_outlet",
+      "P0": 1000000.0
+    }
+  },
+  "output": {
+    "pressure_max": "~2.07 MPa",
+    "description": "Classic water hammer scenario. Pressure wave travels at ~1234 m/s, reflecting at outlet. Gradual 2s closure reduces peak vs instantaneous."
+  }
+}

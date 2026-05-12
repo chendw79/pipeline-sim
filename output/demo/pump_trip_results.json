@@ -1,0 +1,6 @@
+{
+  "case": "Pump Trip",
+  "P_inlet_final_MPa": 2.0,
+  "P_min_during_transient_MPa": 0.04146640659575896,
+  "wave_speed_mps": 1241.916948431561
+}

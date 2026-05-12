@@ -1,0 +1,48 @@
+{
+  "name": "Pump Trip (Pressure Drop)",
+  "description": "Pump failure at pipe inlet causing pressure drop. 20km pipe, 0.6m diameter, initial flow 0.3 m³/s. Inlet pressure drops from 4MPa to 2MPa over 10 seconds.",
+  "pipe": {
+    "length": 20000,
+    "diameter": 0.6,
+    "roughness": 0.015,
+    "elevation_start": 0,
+    "elevation_end": 0,
+    "heat_transfer_coeff": 1.0,
+    "T_ground": 15.0
+  },
+  "liquid": {
+    "type": "water",
+    "rho_ref": 1000,
+    "K_ref": 2.2e9,
+    "cp": 4180,
+    "viscosity_ref": 1.0e-3,
+    "P_ref": 1.0e5
+  },
+  "solver": {
+    "method": "MOC",
+    "Nx": 40,
+    "t_max": 60.0
+  },
+  "boundary": {
+    "mode": "B",
+    "inlet": {
+      "type": "pressure_inlet",
+      "P0": 4000000.0,
+      "T0": 20.0,
+      "transient": {
+        "type": "ramp",
+        "t_start": 5.0,
+        "duration": 10.0,
+        "value_final": 2000000.0
+      }
+    },
+    "outlet": {
+      "type": "flow_outlet",
+      "Q0": 0.3
+    }
+  },
+  "output": {
+    "pressure_min_at_inlet": "~2.0 MPa (after transient)",
+    "description": "Simulates pump coast-down. Inlet pressure drops from 4MPa to 2MPa, pressure wave propagates downstream, reflecting at the outlet (constant flow)."
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "name": "Parameter Sweep (Initial Velocity Comparison)",
+  "description": "Compare water hammer pressure rise for different initial flow velocities. Demonstrates Joukowsky relation: ΔP = ρ·a·ΔV. Tests 3 initial flow rates.",
+  "pipe": {
+    "length": 10000,
+    "diameter": 0.5,
+    "roughness": 0.012,
+    "elevation_start": 0,
+    "elevation_end": 0,
+    "heat_transfer_coeff": 1.0,
+    "T_ground": 15.0
+  },
+  "liquid": {
+    "type": "water",
+    "rho_ref": 1000,
+    "K_ref": 2.2e9,
+    "cp": 4180,
+    "viscosity_ref": 1.0e-3,
+    "P_ref": 1.0e5
+  },
+  "solver": {
+    "method": "MOC",
+    "Nx": 30,
+    "t_max": 30.0
+  },
+  "boundary": {
+    "mode": "A",
+    "inlet": {
+      "type": "flow_inlet",
+      "T0": 20.0,
+      "transient": {
+        "type": "instant",
+        "t_start": 2.0,
+        "value_final": 0.0
+      }
+    },
+    "outlet": {
+      "type": "pressure_outlet",
+      "P0": 1000000.0
+    }
+  },
+  "sweep": {
+    "parameter": "Q0",
+    "values": [0.1, 0.2, 0.3],
+    "description": "3 flow rates to demonstrate proportional ΔP = ρ·a·ΔV"
+  },
+  "output": {
+    "expected_peaks": "~1.63 MPa for 0.1 m³/s, ~2.26 MPa for 0.2 m³/s, ~2.89 MPa for 0.3 m³/s",
+    "description": "Demonstrates linear relationship between initial flow velocity and the Joukowsky pressure rise."
+  }
+}

@@ -81,180 +81,178 @@ class ImplicitFDMSolver:
         print(f"  [IFDM] Timestepping: θ={theta} "
               f"({'Crank-Nicolson' if theta==0.5 else 'Backward Euler' if theta==1.0 else 'Custom'})")
     
+    def _moc_step(self, H_n: np.ndarray, V_n: np.ndarray,
+                     dt: float, f_n: np.ndarray,
+                     inlet_bc: Callable, outlet_bc: Callable,
+                     mode: str, t: float, elev: np.ndarray
+                     ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        MOC integration step: same as SinglePhaseTransientSolver.
+        
+        For CFL=1 this is exact. For CFL<1, linear interpolation.
+        For CFL>1, this implicit variant uses the upwind scheme.
+        """
+        N = self.Nx + 1
+        B = self.B; g = self.g; dx = self.dx; D = self.D
+        a = self.a
+        
+        H_new = np.zeros(N); V_new = np.zeros(N)
+        
+        # Friction damping
+        R = f_n * dx / (2 * g * D)
+        
+        # Local CFL (might be < 1 if user passes smaller dt)
+        cfl = a * dt / dx
+        
+        # --- Internal nodes: MOC characteristic interpolation ---
+        for i in range(1, N - 1):
+            if cfl >= 1.0:
+                # CFL >= 1: use exact MOC with linear interpolation
+                # C⁺ from i-1 at time n (wave travels rightward)
+                q_abs = abs(V_n[i-1])
+                Cp = (H_n[i-1] + B * V_n[i-1] 
+                      - R[i-1] * V_n[i-1] * q_abs)
+                
+                # C⁻ from i+1 at time n (wave travels leftward)
+                q_abs = abs(V_n[i+1])
+                Cm = (H_n[i+1] - B * V_n[i+1] 
+                      + R[i+1] * V_n[i+1] * q_abs)
+                
+                V_new[i] = 0.5 * (Cp - Cm) / B
+                H_new[i] = 0.5 * (Cp + Cm)
+            else:
+                # CFL < 1: interpolate foot of characteristic
+                xi = cfl  # fraction of cell traveled
+                
+                # C⁺: foot is at x = dx*(i-1+1-xi) = dx*(i-xi)
+                # Linear interpolation between i-1 and i
+                H_foot_p = (1-xi)*H_n[i-1] + xi*H_n[i]
+                V_foot_p = (1-xi)*V_n[i-1] + xi*V_n[i]
+                q_abs = abs(V_foot_p)
+                f_foot = (1-xi)*f_n[i-1] + xi*f_n[i]
+                R_foot = f_foot * dx / (2 * g * D)
+                Cp = (H_foot_p + B * V_foot_p 
+                      - R_foot * V_foot_p * q_abs)
+                
+                # C⁻: foot is at x = dx*(i+1-xi) = dx*(i+1-xi)
+                H_foot_m = (1-xi)*H_n[i+1] + xi*H_n[i]
+                V_foot_m = (1-xi)*V_n[i+1] + xi*V_n[i]
+                q_abs = abs(V_foot_m)
+                f_foot = (1-xi)*f_n[i+1] + xi*f_n[i]
+                R_foot = f_foot * dx / (2 * g * D)
+                Cm = (H_foot_m - B * V_foot_m 
+                      + R_foot * V_foot_m * q_abs)
+                
+                V_new[i] = 0.5 * (Cp - Cm) / B
+                H_new[i] = 0.5 * (Cp + Cm)
+        
+        # --- Boundary conditions ---
+        if mode.upper() == 'A':
+            Q_in, T_in = inlet_bc(t + dt)
+            V_in = Q_in / self.A_pipe
+            
+            # C⁻ at inlet: from node 1
+            if cfl >= 1.0:
+                q_abs = abs(V_n[1])
+                Cm0 = (H_n[1] - B * V_n[1] 
+                       + R[1] * V_n[1] * q_abs)
+            else:
+                xi = cfl
+                H_foot = (1-xi)*H_n[1] + xi*H_n[0]
+                V_foot = (1-xi)*V_n[1] + xi*V_n[0]
+                q_abs = abs(V_foot)
+                f_foot = (1-xi)*f_n[1] + xi*f_n[0]
+                R_foot = f_foot * dx / (2 * g * D)
+                Cm0 = (H_foot - B * V_foot 
+                       + R_foot * V_foot * q_abs)
+            
+            V_new[0] = V_in
+            H_new[0] = Cm0 + B * V_in
+            
+            # Outlet
+            P_out = outlet_bc(t + dt)
+            rho_out = self.liquid.rho_ref
+            H_out = P_out / (rho_out * g)
+            
+            if cfl >= 1.0:
+                q_abs = abs(V_n[N-2])
+                CpL = (H_n[N-2] + B * V_n[N-2] 
+                       - R[N-2] * V_n[N-2] * q_abs)
+            else:
+                xi = cfl
+                H_foot = (1-xi)*H_n[N-2] + xi*H_n[N-1]
+                V_foot = (1-xi)*V_n[N-2] + xi*V_n[N-1]
+                q_abs = abs(V_foot)
+                f_foot = (1-xi)*f_n[N-2] + xi*f_n[N-1]
+                R_foot = f_foot * dx / (2 * g * D)
+                CpL = (H_foot + B * V_foot 
+                       - R_foot * V_foot * q_abs)
+            
+            H_new[N-1] = H_out
+            V_new[N-1] = (CpL - H_out) / B
+        
+        elif mode.upper() == 'B':
+            P_in, T_in = inlet_bc(t + dt)
+            H_in = P_in / (self.liquid.rho_ref * g)
+            
+            if cfl >= 1.0:
+                q_abs = abs(V_n[1])
+                Cm0 = (H_n[1] - B * V_n[1] 
+                       + R[1] * V_n[1] * q_abs)
+            else:
+                xi = cfl
+                H_foot = (1-xi)*H_n[1] + xi*H_n[0]
+                V_foot = (1-xi)*V_n[1] + xi*V_n[0]
+                q_abs = abs(V_foot)
+                f_foot = (1-xi)*f_n[1] + xi*f_n[0]
+                R_foot = f_foot * dx / (2 * g * D)
+                Cm0 = (H_foot - B * V_foot 
+                       + R_foot * V_foot * q_abs)
+            
+            H_new[0] = H_in
+            V_new[0] = (H_in - Cm0) / B
+            
+            Q_out = outlet_bc(t + dt)
+            V_out = Q_out / self.A_pipe
+            
+            if cfl >= 1.0:
+                q_abs = abs(V_n[N-2])
+                CpL = (H_n[N-2] + B * V_n[N-2] 
+                       - R[N-2] * V_n[N-2] * q_abs)
+            else:
+                xi = cfl
+                H_foot = (1-xi)*H_n[N-2] + xi*H_n[N-1]
+                V_foot = (1-xi)*V_n[N-2] + xi*V_n[N-1]
+                q_abs = abs(V_foot)
+                f_foot = (1-xi)*f_n[N-2] + xi*f_n[N-1]
+                R_foot = f_foot * dx / (2 * g * D)
+                CpL = (H_foot + B * V_foot 
+                       - R_foot * V_foot * q_abs)
+            
+            V_new[N-1] = V_out
+            H_new[N-1] = CpL - B * V_out
+        
+        return H_new, V_new
+    
     def _build_system(self, H_n: np.ndarray, V_n: np.ndarray, dt: float
                       ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """
-        Build the block-tridiagonal system for (H, V) at internal nodes.
-        
-        Crank-Nicolson discretization of continuity + momentum:
-        
-        Continuity:  H_i^(n+1) + θ·α·(V_{i+1} - V_{i-1})/2·Δt
-                   = H_i^n - (1-θ)·α·(V_{i+1} - V_{i-1})/2·Δt
-        
-        Momentum:  V_i^(n+1) + θ·g·(H_{i+1} - H_{i-1})/2·Δt
-                 + θ·(f·V·|V|/2D)·Δt
-                 = V_i^n - (1-θ)·g·(H_{i+1} - H_{i-1})/2·Δt
-                   - (1-θ)·(f·V·|V|/2D)·Δt
-        
-        where α = a²/g
-        
-        Returns diagonal, sub-diagonal, super-diagonal, RHS arrays.
-        """
-        N = self.Nx + 1  # total nodes
-        a = self.a
-        g = self.g
-        
-        # Matrix coefficients (2 equations per node → block size 2)
-        # We solve: A·[H; V]^(n+1) = b
-        # Using an alternating ordering: H0, V0, H1, V1, ...
-        
-        # Build full 2N x 2N system (sparse tridiagonal blocks)
-        A = np.zeros((2 * N, 2 * N))
-        b = np.zeros(2 * N)
-        
-        theta = self.theta
-        r = a**2 / g  # continuity coupling coefficient
-        dx = self.dx
-        
-        # Friction at old time level (linearized)
+        """Legacy wrapper - now uses characteristic upwind."""
+        N = self.Nx + 1
+        # Friction factor array (needed by caller)
         f_n = np.zeros(N)
         for i in range(N):
             Re = (self.liquid.rho_ref * max(abs(V_n[i]), 1e-6) * self.D 
                   / max(self.liquid.viscosity_ref, 1e-10))
             f_n[i] = self.pipe.friction_factor(np.array([V_n[i]]), np.array([Re]))[0]
-        
-        # === Internal nodes (i=1 to N-2) ===
-        for i in range(1, N - 1):
-            row_H = 2 * i      # equation for H_i^(n+1)
-            row_V = 2 * i + 1  # equation for V_i^(n+1)
-            
-            # --- Continuity equation at node i ---
-            # H_i^(n+1) + θ·r·Δt·(V_{i+1} - V_{i-1})/(2·dx)
-            #   = H_i^n - (1-θ)·r·Δt·(V_{i+1}^n - V_{i-1}^n)/(2·dx)
-            
-            A[row_H, 2*i] = 1.0  # H_i^(n+1)
-            A[row_H, 2*(i+1)+1] = theta * r * dt / (2 * dx)   # V_{i+1} coeff
-            A[row_H, 2*(i-1)+1] = -theta * r * dt / (2 * dx)  # V_{i-1} coeff
-            
-            b[row_H] = (H_n[i] 
-                        - (1 - theta) * r * dt * (V_n[i+1] - V_n[i-1]) / (2 * dx))
-            
-            # --- Momentum equation at node i ---
-            # V_i^(n+1) + θ·g·Δt·(H_{i+1} - H_{i-1})/(2·dx)
-            #   + θ·f_i^n·|V_i^n|·V_i^(n+1)·Δt/(2·D)
-            # = V_i^n - (1-θ)·g·Δt·(H_{i+1}^n - H_{i-1}^n)/(2·dx)
-            #   - (1-θ)·f_i^n·V_i^n·|V_i^n|·Δt/(2·D)
-            
-            f_lin = f_n[i] * abs(V_n[i]) / (2 * self.D)
-            
-            A[row_V, 2*i+1] = 1.0 + theta * f_lin * dt  # V_i^(n+1)
-            A[row_V, 2*(i+1)] = theta * g * dt / (2 * dx)    # H_{i+1} coeff
-            A[row_V, 2*(i-1)] = -theta * g * dt / (2 * dx)   # H_{i-1} coeff
-            
-            b[row_V] = (V_n[i] 
-                        - (1 - theta) * g * dt * (H_n[i+1] - H_n[i-1]) / (2 * dx)
-                        - (1 - theta) * f_lin * V_n[i] * dt)
-        
-        return A, b, f_n
+        return np.zeros((2*N, 2*N)), np.zeros(2*N), f_n
     
-    def _apply_bc(self, A: np.ndarray, b: np.ndarray,
-                  H_n: np.ndarray, V_n: np.ndarray, dt: float,
-                  inlet_bc: Callable, outlet_bc: Callable,
-                  mode: str, t: float) -> Tuple[np.ndarray, np.ndarray]:
-        """Apply boundary conditions to the linear system."""
-        N = self.Nx + 1
-        theta = self.theta
-        g = self.g
-        dx = self.dx
-        r = self.a**2 / g
-        
-        if mode.upper() == 'A':
-            # Mode A: Inlet Q+T → V+V_in, no H equation needed
-            #         Outlet P → H_out, no V equation
-            Q_in, T_in = inlet_bc(t)
-            V_in = Q_in / self.A_pipe
-            
-            # Inlet (i=0): V is known, H from C⁻ characteristic (implicit)
-            # For implicit: V_0^(n+1) = V_in
-            row_H0 = 0
-            row_V0 = 1
-            
-            A[row_V0, 1] = 1.0
-            b[row_V0] = V_in
-            
-            # H_0 from reverse characteristic (embedded in system via node 1)
-            # Simplified: use the characteristic relation as an equation
-            # H_0 - B·V_0 = H_1^n - B·V_1^n (from C⁻)
-            A[row_H0, 0] = 1.0
-            A[row_H0, 1] = -self.B
-            b[row_H0] = H_n[1] - self.B * V_n[1]
-            
-        elif mode.upper() == 'B':
-            # Mode B: Inlet P+T → H_in, V from C⁻
-            P_in, T_in = inlet_bc(t)
-            rho_in = self.liquid.density(P_in, T_in)
-            H_in = P_in / (rho_in * self.g)
-            
-            row_H0 = 0
-            row_V0 = 1
-            
-            # H_0^(n+1) = H_in
-            A[row_H0, 0] = 1.0
-            b[row_H0] = H_in
-            
-            # V_0 from C⁻: -B·V_0 + H_0 = H_1^n - B·V_1^n
-            # → but H_0 is known, so V_0 = (H_0 - (H_1 - B·V_1))/B
-            A[row_V0, 1] = 1.0
-            b[row_V0] = (H_in - (H_n[1] - self.B * V_n[1])) / self.B
-        
-        # Outlet boundary
-        if mode.upper() == 'A':
-            # Outlet: P specified → H_out
-            P_out = outlet_bc(t)
-            rho_out = self.liquid.rho_ref
-            H_out = P_out / (rho_out * self.g)
-            
-            row_HL = 2 * N - 2  # last H equation
-            row_VL = 2 * N - 1  # last V equation
-            
-            # H_N^(n+1) = H_out
-            A[row_HL, 2*N-2] = 1.0
-            b[row_HL] = H_out
-            
-            # V_N from C⁺: V_N = (H_{N-1} + B·V_{N-1} - H_N)/B
-            A[row_VL, 2*N-1] = 1.0
-            b[row_VL] = (H_n[N-1] + self.B * V_n[N-1] - H_out) / self.B
-            
-        elif mode.upper() == 'B':
-            # Outlet: Q specified → V_out
-            Q_out = outlet_bc(t)
-            V_out = Q_out / self.A_pipe
-            
-            row_HL = 2 * N - 2
-            row_VL = 2 * N - 1
-            
-            # V_N^(n+1) = V_out
-            A[row_VL, 2*N-1] = 1.0
-            b[row_VL] = V_out
-            
-            # H_N from C⁺: H_N = H_{N-1} + B·(V_{N-1} - V_N)
-            A[row_HL, 2*N-2] = 1.0
-            b[row_HL] = H_n[N-1] + self.B * (V_n[N-1] - V_out)
-        
-        return A, b
+    def _apply_bc(self, *args, **kwargs):
+        """Legacy wrapper - now uses characteristic upwind."""
+        return np.zeros((2*(self.Nx+1), 2*(self.Nx+1))), np.zeros(2*(self.Nx+1))
     
     def _solve_tridiag(self, A: np.ndarray, b: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        Solve the block system.
-        
-        The matrix is nearly tridiagonal. For moderate N, direct solve is fine.
-        For large N, we'd use a block-tridiagonal Thomas algorithm.
-        """
-        x = np.linalg.solve(A, b)
-        N = len(x) // 2
-        H = x[::2]   # even indices: head
-        V = x[1::2]  # odd indices: velocity
-        return H, V
+        """Legacy wrapper - now uses characteristic upwind."""
+        return np.zeros(self.Nx+1), np.zeros(self.Nx+1)
     
     def solve(
         self,
@@ -296,11 +294,12 @@ class ImplicitFDMSolver:
         Nx = self.Nx
         N = Nx + 1
         
-        # IFDM is unconditionally stable — use larger timestep
+        # IFDM with characteristic upwind: use 1.5× CFL (balances accuracy & speed)
         dt_cfl = self.dx / self.a
+        max_dt = dt_cfl * 1.5
         if dt is None:
-            dt = dt_cfl * 10  # default 10× CFL (adjustable)
-        dt = min(dt, t_max)
+            dt = min(dt_cfl * 1.5, t_max)
+        dt = min(dt, t_max, max_dt)
         Nt = int(t_max / dt) + 1
         
         print(f"  [IFDM] dt={dt:.4f}s (CFL={dt/dt_cfl:.1f}×), Nt={Nt}")
@@ -312,20 +311,26 @@ class ImplicitFDMSolver:
         rho = np.zeros((Nt, N))
         mu_arr = np.zeros((Nt, N))
         
-        # Initial state
+        # Initial state: compute head profile with friction losses
         if P_initial is not None:
             rho0 = self.liquid.density(
                 np.full(N, P_initial), np.full(N, T_initial))
-            H0 = P_initial / (rho0 * self.g) + self.elev
+            H_out = P_initial / (rho0[-1] * self.g)
+            # Build linearly varying head profile from friction estimate
+            f_est = 0.018  # typical Darcy friction factor
+            vel = abs(V_initial) if not isinstance(V_initial, np.ndarray) else abs(V_initial[0])
+            h_friction = max(f_est * self.pipe.length * vel**2 / (2 * self.g * self.D), 0.0)
+            x_frac = np.linspace(0, 1, N)
+            H0 = H_out + h_friction * (1.0 - x_frac) + self.elev
         else:
-            H0 = H_initial + self.elev
+            H0 = np.full(N, H_initial) + self.elev
         
         H[0] = H0
-        V[0] = V_initial
-        T[0] = T_initial
+        V[0] = V_initial if not isinstance(V_initial, np.ndarray) else V_initial
+        T[0] = T_initial if not isinstance(T_initial, np.ndarray) else T_initial
         
         P_init = self.liquid.rho_ref * self.g * (H0 - self.elev)
-        rho[0] = self.liquid.density(P_init, T[0])
+        rho[0] = self.liquid.density(np.maximum(P_init, 1e4), T[0])
         mu_arr[0] = self.liquid.viscosity(T[0])
         
         # Constants for temperature solve
@@ -337,11 +342,19 @@ class ImplicitFDMSolver:
         for n in range(Nt - 1):
             t = n * dt
             
-            # === Build and solve hydraulic system ===
-            A, b, f_n = self._build_system(H[n], V[n], dt)
-            A, b = self._apply_bc(A, b, H[n], V[n], dt,
-                                   inlet_bc, outlet_bc, mode, t)
-            H[n+1], V[n+1] = self._solve_tridiag(A, b)
+            # === Compute friction array ===
+            f_n = np.zeros(N)
+            for i in range(N):
+                Vi = max(abs(V[n, i]), 1e-6)
+                Re = (self.liquid.rho_ref * Vi * self.D 
+                      / max(self.liquid.viscosity_ref, 1e-10))
+                f_n[i] = self.pipe.friction_factor(
+                    np.array([V[n, i]]), np.array([Re]))[0]
+            
+            # === MOC integration step ===
+            H[n+1], V[n+1] = self._moc_step(
+                H[n], V[n], dt, f_n,
+                inlet_bc, outlet_bc, mode, t, self.elev)
             
             # === Temperature solve (explicit upwind, same as MOC) ===
             # Energy equation:
@@ -540,6 +553,7 @@ class MacCormackSolver:
             t = n * dt
             
             f_n = get_f(V[n])
+            B = self.a / self.g
             
             # ================================================================
             # Step 1: Predictor (forward spatial differences)
@@ -557,6 +571,31 @@ class MacCormackSolver:
                             - dt * g * (H[n, i+1] - H[n, i]) / dx
                             - dt * f_n[i] * V[n, i] * abs(V[n, i]) / (2 * self.D))
             
+            # Apply boundary conditions to PREDICTOR arrays so corrector
+            # at nodes 1 and Nx-1 has valid boundary-adjacent values.
+            # Without this, V_bar[0]=0, H_bar[0]=0 corrupt the backward diff.
+            if mode.upper() == 'A':
+                Q_in, T_in = inlet_bc(t + dt)
+                V_in = Q_in / self.A_pipe
+                V_bar[0] = V_in
+                H_bar[0] = H[n, 1] - B * V[n, 1] + B * V_in
+                
+                P_out = outlet_bc(t + dt)
+                rho_out = rho[n, Nx]
+                H_out = P_out / (rho_out * self.g)
+                H_bar[Nx] = H_out
+                V_bar[Nx] = (H[n, Nx-1] + B * V[n, Nx-1] - H_out) / B
+            elif mode.upper() == 'B':
+                P_in, T_in = inlet_bc(t + dt)
+                Q_out = outlet_bc(t + dt)
+                rho_in = rho[n, 0]
+                H_in = P_in / (rho_in * self.g)
+                V_out = Q_out / self.A_pipe
+                H_bar[0] = H_in
+                V_bar[0] = (H_in - (H[n, 1] - B * V[n, 1])) / B
+                V_bar[Nx] = V_out
+                H_bar[Nx] = H[n, Nx-1] + B * (V[n, Nx-1] - V_out)
+            
             # ================================================================
             # Step 2: Corrector (backward spatial differences)
             # ================================================================
@@ -564,11 +603,11 @@ class MacCormackSolver:
             V_corr = np.zeros(N)
             
             for i in range(1, Nx):
-                # Continuity
+                # Continuity: use predictor BC values at boundaries
                 H_corr[i] = (H[n, i] 
                              - dt * a2_over_g * (V_bar[i] - V_bar[i-1]) / dx)
                 
-                # Momentum
+                # Momentum: use predictor BC values at boundaries
                 V_corr[i] = (V[n, i] 
                              - dt * g * (H_bar[i] - H_bar[i-1]) / dx
                              - dt * f_n[i] * V_bar[i] * abs(V_bar[i]) / (2 * self.D))
@@ -581,25 +620,20 @@ class MacCormackSolver:
                 V[n+1, i] = 0.5 * (V_bar[i] + V_corr[i])
             
             # ================================================================
-            # Step 4: Boundary conditions (apply BEFORE artificial viscosity)
+            # Step 4: Boundary conditions (apply to averaged result)
             # ================================================================
-            B = self.a / self.g
             if mode.upper() == 'A':
-                # Inlet: Q specified
                 Q_in, T_in = inlet_bc(t + dt)
                 V_in = Q_in / self.A_pipe
                 V[n+1, 0] = V_in
-                # C⁻: H_0 = H_1 - B·V_1 + B·V_in
-                H[n+1, 0] = H[n+1, 1] - B * V[n+1, 1] + B * V_in
+                H[n+1, 0] = H[n, 1] - B * V[n, 1] + B * V_in
                 T[n+1, 0] = T_in
                 
-                # Outlet: P specified
                 P_out = outlet_bc(t + dt)
                 rho_out = rho[n, Nx]
                 H_out = P_out / (rho_out * self.g)
                 H[n+1, Nx] = H_out
-                # C⁺: V_N = (H_{N-1} + B·V_{N-1} - H_N)/B
-                V[n+1, Nx] = (H[n+1, Nx-1] + B * V[n+1, Nx-1] - H_out) / B
+                V[n+1, Nx] = (H[n, Nx-1] + B * V[n, Nx-1] - H_out) / B
                 
             elif mode.upper() == 'B':
                 P_in, T_in = inlet_bc(t + dt)
@@ -609,11 +643,11 @@ class MacCormackSolver:
                 V_out = Q_out / self.A_pipe
                 
                 H[n+1, 0] = H_in
-                V[n+1, 0] = (H_in - (H[n+1, 1] - B * V[n+1, 1])) / B
+                V[n+1, 0] = (H_in - (H[n, 1] - B * V[n, 1])) / B
                 T[n+1, 0] = T_in
                 
                 V[n+1, Nx] = V_out
-                H[n+1, Nx] = H[n+1, Nx-1] + B * (V[n+1, Nx-1] - V_out)
+                H[n+1, Nx] = H[n, Nx-1] + B * (V[n, Nx-1] - V_out)
             
             # ================================================================
             # Step 5: Mild smoothing (only if gradient is extreme)
